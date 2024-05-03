@@ -1,5 +1,5 @@
 {
-    "name": "inertiajs/inertia-laravel",
+    "name": "changers-no/inertia-laravel",
     "type": "library",
     "description": "The Laravel adapter for Inertia.js.",
     "keywords": ["laravel", "inertia"],
@@ -43,9 +43,6 @@
             "providers": [
                 "Inertia\\ServiceProvider"
             ]
-        },
-        "branch-alias": {
-            "dev-master": "1.x-dev"
         }
     },
     "minimum-stability": "dev",
