@@ -5,6 +5,7 @@ namespace Inertia\Tests;
 use Mockery;
 use Inertia\LazyProp;
 use Inertia\Response;
+use Inertia\AlwaysProp;
 use Illuminate\View\View;
 use Illuminate\Http\Request;
 use Illuminate\Support\Fluent;
@@ -255,6 +256,29 @@ class ResponseTest extends TestCase
         $this->assertSame('123', $page->version);
     }
 
+    public function test_exclude_props_from_partial_response(): void
+    {
+        $request = Request::create('/user/123', 'GET');
+        $request->headers->add(['X-Inertia' => 'true']);
+        $request->headers->add(['X-Inertia-Partial-Component' => 'User/Edit']);
+        $request->headers->add(['X-Inertia-Partial-Except' => 'user']);
+
+        $user = (object) ['name' => 'Jonathan'];
+        $response = new Response('User/Edit', ['user' => $user, 'partial' => 'partial-data'], 'app', '123');
+        $response = $response->toResponse($request);
+        $page = $response->getData();
+
+        $props = get_object_vars($page->props);
+
+        $this->assertInstanceOf(JsonResponse::class, $response);
+        $this->assertSame('User/Edit', $page->component);
+        $this->assertFalse(isset($props['user']));
+        $this->assertCount(1, $props);
+        $this->assertSame('partial-data', $page->props->partial);
+        $this->assertSame('/user/123', $page->url);
+        $this->assertSame('123', $page->version);
+    }
+
     public function test_lazy_props_are_not_included_by_default(): void
     {
         $request = Request::create('/users', 'GET');
@@ -289,6 +313,39 @@ class ResponseTest extends TestCase
 
         $this->assertFalse(property_exists($page->props, 'users'));
         $this->assertSame('A lazy value', $page->props->lazy);
+    }
+
+    public function test_always_props_are_included_on_partial_reload(): void
+    {
+        $request = Request::create('/user/123', 'GET');
+        $request->headers->add(['X-Inertia' => 'true']);
+        $request->headers->add(['X-Inertia-Partial-Component' => 'User/Edit']);
+        $request->headers->add(['X-Inertia-Partial-Data' => 'data']);
+
+        $props = [
+            'user' => new LazyProp(function () {
+                return [
+                    'name' => 'Jonathan Reinink',
+                    'email' => 'jonathan@example.com',
+                ];
+            }),
+            'data' => [
+                'name' => 'Taylor Otwell',
+            ],
+            'errors' => new AlwaysProp(function () {
+                return [
+                    'name' => 'The email field is required.',
+                ];
+            }),
+        ];
+
+        $response = new Response('User/Edit', $props, 'app', '123');
+        $response = $response->toResponse($request);
+        $page = $response->getData();
+
+        $this->assertSame('The email field is required.', $page->props->errors->name);
+        $this->assertSame('Taylor Otwell', $page->props->data->name);
+        $this->assertFalse(isset($page->props->user));
     }
 
     public function test_top_level_dot_props_get_unpacked(): void
@@ -399,5 +456,86 @@ class ResponseTest extends TestCase
         $page = $response->getData();
 
         $this->assertSame('/subpath/product/123', $page->url);
+    }
+
+    public function test_prop_as_basic_array(): void
+    {
+        $request = Request::create('/years', 'GET');
+
+        $response = new Response('Years', ['years' => [2022, 2023, 2024]], 'app', '123');
+        $response = $response->toResponse($request);
+        $view = $response->getOriginalContent();
+        $page = $view->getData()['page'];
+
+        $this->assertSame([2022, 2023, 2024], $page['props']['years']);
+    }
+
+    public function test_dot_notation_props_are_merged_with_shared_props(): void
+    {
+        $request = Request::create('/test', 'GET');
+
+        $response = new Response('Test', [
+            'auth' => ['user' => ['name' => 'Jonathan']],
+            'auth.user.is_super' => true,
+        ], 'app', '123');
+        $response = $response->toResponse($request);
+        $view = $response->getOriginalContent();
+        $page = $view->getData()['page'];
+
+        $this->assertSame([
+            'auth' => [
+                'user' => [
+                    'name' => 'Jonathan',
+                    'is_super' => true,
+                ],
+            ],
+        ], $page['props']);
+    }
+
+    public function test_dot_notation_props_are_merged_with_lazy_shared_props(): void
+    {
+        $request = Request::create('/test', 'GET');
+
+        $response = new Response('Test', [
+            'auth' => function () {
+                return ['user' => ['name' => 'Jonathan']];
+            },
+            'auth.user.is_super' => true,
+        ], 'app', '123');
+
+        $response = $response->toResponse($request);
+        $view = $response->getOriginalContent();
+        $page = $view->getData()['page'];
+
+        $this->assertSame([
+            'auth' => [
+                'user' => [
+                    'name' => 'Jonathan',
+                    'is_super' => true,
+                ],
+            ],
+        ], $page['props']);
+    }
+
+    public function test_dot_notation_props_are_merged_with_other_dot_notation_props(): void
+    {
+        $request = Request::create('/test', 'GET');
+
+        $response = new Response('Test', [
+            'auth.user' => ['name' => 'Jonathan'],
+            'auth.user.is_super' => true,
+        ], 'app', '123');
+        $response = $response->toResponse($request);
+        $view = $response->getOriginalContent();
+        $page = $view->getData()['page'];
+
+        $this->assertSame([
+            'auth' => [
+                'user' => [
+                    'name' => 'Jonathan',
+                    'is_super' => true,
+                ],
+            ],
+        ], $page['props']);
     }
 }
