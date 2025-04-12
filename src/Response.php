@@ -109,7 +109,7 @@ class Response implements Responsable
             [
                 'component' => $this->component,
                 'props' => $props,
-                'url' => Str::start(Str::after($request->fullUrl(), $request->getSchemeAndHttpHost()), '/'),
+                'url' => $request->getBaseUrl() . $request->getRequestUri(),
                 'version' => $this->version,
                 'clearHistory' => $this->clearHistory,
                 'encryptHistory' => $this->encryptHistory,
@@ -255,7 +255,7 @@ class Response implements Responsable
                 DeferProp::class,
                 AlwaysProp::class,
                 MergeProp::class,
-            ])->first(fn ($class) => $value instanceof $class);
+            ])->first(fn($class) => $value instanceof $class);
 
             if ($resolveViaApp) {
                 $value = App::call($value);
@@ -311,22 +311,22 @@ class Response implements Responsable
     {
         $resetProps = collect(explode(',', $request->header(Header::RESET, '')));
         $mergeProps = collect($this->props)
-            ->filter(fn ($prop) => $prop instanceof Mergeable)
-            ->filter(fn ($prop) => $prop->shouldMerge())
-            ->filter(fn ($_, $key) => ! $resetProps->contains($key));
+            ->filter(fn($prop) => $prop instanceof Mergeable)
+            ->filter(fn($prop) => $prop->shouldMerge())
+            ->filter(fn($_, $key) => ! $resetProps->contains($key));
 
         $deepMergeProps = $mergeProps
-            ->filter(fn ($prop) => $prop->shouldDeepMerge())
+            ->filter(fn($prop) => $prop->shouldDeepMerge())
             ->keys();
 
         $mergeProps = $mergeProps
-            ->filter(fn ($prop) => ! $prop->shouldDeepMerge())
+            ->filter(fn($prop) => ! $prop->shouldDeepMerge())
             ->keys();
 
         return array_filter([
             'mergeProps' => $mergeProps->toArray(),
             'deepMergeProps' => $deepMergeProps->toArray(),
-        ], fn ($prop) => count($prop) > 0);
+        ], fn($prop) => count($prop) > 0);
     }
 
     public function resolveDeferredProps(Request $request): array
